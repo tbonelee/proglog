@@ -12,6 +12,7 @@ var (
 )
 
 const (
+	// uint64의 길이는 8바이트
 	lenWidth = 8
 )
 
