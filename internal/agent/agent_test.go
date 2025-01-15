@@ -8,6 +8,7 @@ import (
 	api "github.com/tbonelee/proglog/api/v1"
 	"github.com/tbonelee/proglog/internal/agent"
 	"github.com/tbonelee/proglog/internal/config"
+	"github.com/tbonelee/proglog/internal/loadbalance"
 	"github.com/travisjeffery/go-dynaport"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -90,6 +91,10 @@ func TestAgent(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+
+	// wait until replication has finished
+	time.Sleep(3 * time.Second)
+
 	consumeResponse, err := leaderClient.Consume(
 		context.Background(),
 		&api.ConsumeRequest{
@@ -98,9 +103,6 @@ func TestAgent(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, consumeResponse.Record.Value, []byte("foo"))
-
-	// wait until replication has finished
-	time.Sleep(3 * time.Second)
 
 	followerClient := client(t, agents[1], peerTLSConfig)
 	consumeResponse, err = followerClient.Consume(
@@ -131,14 +133,16 @@ func client(
 	tlsConfig *tls.Config,
 ) api.LogClient {
 	tlsCreds := credentials.NewTLS(tlsConfig)
-	opts := []grpc.DialOption{grpc.WithTransportCredentials(tlsCreds)}
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(tlsCreds),
+	}
 	rpcAddr, err := agent.Config.RPCAddr()
 	require.NoError(t, err)
-	conn, err := grpc.NewClient(
-		fmt.Sprintf(
-			"%s",
-			rpcAddr,
-		), opts...)
+	conn, err := grpc.NewClient(fmt.Sprintf(
+		"%s:///%s",
+		loadbalance.Name,
+		rpcAddr,
+	), opts...)
 	require.NoError(t, err)
 	client := api.NewLogClient(conn)
 	return client
